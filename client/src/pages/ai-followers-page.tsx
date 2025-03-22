@@ -10,7 +10,7 @@ import { useUpdateFollower, useDeleteFollower } from "@/lib/mutations/follower-m
 import { TourProvider } from "@/components/tour/tour-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, RefreshCw, Tag } from "lucide-react";
+import { Search, RefreshCw, Tag, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { 
   Select, 
@@ -24,23 +24,19 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { X } from "lucide-react";
 
 export default function AiFollowersPage() {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [interestFilter, setInterestFilter] = useState<string | null>(null);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [availableInterests, setAvailableInterests] = useState<string[]>([]);
   const [interestPopoverOpen, setInterestPopoverOpen] = useState(false);
+  const [interestSearchQuery, setInterestSearchQuery] = useState("");
 
   // Redirect to login if no user
   if (!user) {
@@ -68,6 +64,24 @@ export default function AiFollowersPage() {
     }
   }, [followers]);
 
+  // Filter interests based on search query
+  const filteredInterests = useMemo(() => {
+    if (!interestSearchQuery) return availableInterests;
+    
+    return availableInterests.filter(interest => 
+      interest.toLowerCase().includes(interestSearchQuery.toLowerCase())
+    );
+  }, [availableInterests, interestSearchQuery]);
+
+  // Toggle interest selection
+  const toggleInterest = (interest: string) => {
+    setSelectedInterests(prev => 
+      prev.includes(interest)
+        ? prev.filter(i => i !== interest)
+        : [...prev, interest]
+    );
+  };
+
   // Filter and search followers
   const filteredFollowers = useMemo(() => {
     if (!followers) return [];
@@ -77,11 +91,16 @@ export default function AiFollowersPage() {
       if (statusFilter === "active" && !follower.active) return false;
       if (statusFilter === "inactive" && follower.active) return false;
       
-      // Interest filter
-      if (interestFilter) {
-        if (!follower.interests || !follower.interests.includes(interestFilter)) {
-          return false;
-        }
+      // Interests filter (multi-select)
+      if (selectedInterests.length > 0) {
+        if (!follower.interests || follower.interests.length === 0) return false;
+        
+        // Check if the follower has at least one of the selected interests
+        const hasMatchingInterest = selectedInterests.some(selectedInterest => 
+          follower.interests?.includes(selectedInterest)
+        );
+        
+        if (!hasMatchingInterest) return false;
       }
       
       // Search query filter
@@ -118,13 +137,18 @@ export default function AiFollowersPage() {
       
       return true;
     });
-  }, [followers, searchQuery, statusFilter, interestFilter]);
+  }, [followers, searchQuery, statusFilter, selectedInterests]);
 
   // Function to clear all filters
   const clearFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
-    setInterestFilter(null);
+    setSelectedInterests([]);
+  };
+
+  // Remove a specific interest from selection
+  const removeInterest = (interest: string) => {
+    setSelectedInterests(prev => prev.filter(i => i !== interest));
   };
 
   return (
@@ -173,7 +197,7 @@ export default function AiFollowersPage() {
                         </SelectContent>
                       </Select>
                       
-                      {/* Interests filter */}
+                      {/* Multi-select Interests filter */}
                       <Popover open={interestPopoverOpen} onOpenChange={setInterestPopoverOpen}>
                         <PopoverTrigger asChild>
                           <Button 
@@ -183,30 +207,63 @@ export default function AiFollowersPage() {
                             aria-expanded={interestPopoverOpen}
                           >
                             <Tag className="h-4 w-4 mr-1" />
-                            {interestFilter || "Interests"}
+                            <span className="truncate max-w-[100px]">
+                              {selectedInterests.length > 0 
+                                ? `${selectedInterests.length} selected` 
+                                : "Interests"}
+                            </span>
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="p-0" align="start" side="bottom">
-                          <Command>
-                            <CommandInput placeholder="Search interests..." />
-                            <CommandList>
-                              <CommandEmpty>No interests found</CommandEmpty>
-                              <CommandGroup>
-                                {availableInterests.map((interest) => (
-                                  <CommandItem
-                                    key={interest}
-                                    value={interest}
-                                    onSelect={(value) => {
-                                      setInterestFilter(value);
-                                      setInterestPopoverOpen(false);
-                                    }}
-                                  >
-                                    {interest}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
+                        <PopoverContent className="w-[250px] p-0" align="start" side="bottom">
+                          <div className="p-2 border-b">
+                            <Input
+                              placeholder="Search interests..."
+                              value={interestSearchQuery}
+                              onChange={(e) => setInterestSearchQuery(e.target.value)}
+                              className="w-full"
+                            />
+                          </div>
+                          <ScrollArea className="h-[200px]">
+                            <div className="p-2">
+                              {filteredInterests.length === 0 ? (
+                                <p className="text-center py-4 text-sm text-muted-foreground">No interests found</p>
+                              ) : (
+                                filteredInterests.map((interest) => (
+                                  <div key={interest} className="flex items-center space-x-2 py-1">
+                                    <Checkbox 
+                                      id={`interest-${interest}`} 
+                                      checked={selectedInterests.includes(interest)}
+                                      onCheckedChange={() => toggleInterest(interest)}
+                                    />
+                                    <Label 
+                                      htmlFor={`interest-${interest}`}
+                                      className="text-sm flex-1 cursor-pointer"
+                                    >
+                                      {interest}
+                                    </Label>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </ScrollArea>
+                          {selectedInterests.length > 0 && (
+                            <div className="border-t p-2 flex justify-between">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => setSelectedInterests([])}
+                              >
+                                Clear all
+                              </Button>
+                              <Button 
+                                variant="default" 
+                                size="sm"
+                                onClick={() => setInterestPopoverOpen(false)}
+                              >
+                                Apply ({selectedInterests.length})
+                              </Button>
+                            </div>
+                          )}
                         </PopoverContent>
                       </Popover>
 
@@ -223,7 +280,7 @@ export default function AiFollowersPage() {
                 </div>
                 
                 {/* Display filter badges */}
-                {(searchQuery || statusFilter !== "all" || interestFilter) && (
+                {(searchQuery || statusFilter !== "all" || selectedInterests.length > 0) && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     <div className="text-sm text-muted-foreground">Filters:</div>
                     {searchQuery && (
@@ -252,20 +309,20 @@ export default function AiFollowersPage() {
                         </Button>
                       </Badge>
                     )}
-                    {interestFilter && (
-                      <Badge variant="outline" className="flex items-center gap-1">
+                    {selectedInterests.map(interest => (
+                      <Badge key={interest} variant="outline" className="flex items-center gap-1">
                         <Tag className="h-3 w-3 mr-1" />
-                        {interestFilter}
+                        {interest}
                         <Button 
                           variant="ghost" 
                           size="icon" 
                           className="h-4 w-4 p-0 ml-1" 
-                          onClick={() => setInterestFilter(null)}
+                          onClick={() => removeInterest(interest)}
                         >
                           <X className="h-3 w-3" />
                         </Button>
                       </Badge>
-                    )}
+                    ))}
                   </div>
                 )}
               </CardHeader>
